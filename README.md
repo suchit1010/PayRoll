@@ -1,4 +1,4 @@
-# Project Bolt - Payroll Management System
+# Payroll Management System
 
 A modern payroll management system built with Next.js, Supabase, and MongoDB.
 
