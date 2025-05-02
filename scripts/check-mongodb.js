@@ -10,58 +10,52 @@ console.log('\n');
 // Import MongoDB connection module
 const { MongoClient } = require('mongodb');
 
-async function checkConnection() {
-  if (!process.env.MONGODB_URI) {
-    console.error('❌ MONGODB_URI environment variable is not set.');
-    console.log('Please set it in your .env.local file.');
+async function checkMongoDBConnection() {
+  const uri = process.env.MONGODB_URI;
+  const dbName = process.env.MONGODB_DB_NAME;
+
+  if (!uri) {
+    console.error('❌ MONGODB_URI is not set in .env.local');
     return;
   }
 
-  if (!process.env.MONGODB_DB_NAME) {
-    console.warn('⚠️ MONGODB_DB_NAME environment variable is not set.');
-    console.log('Using default database name from connection string.');
+  if (!dbName) {
+    console.error('❌ MONGODB_DB_NAME is not set in .env.local');
+    return;
   }
 
-  let client;
+  console.log('🔍 Checking MongoDB connection...');
+  console.log(`URI: ${uri}`);
+  console.log(`Database: ${dbName}`);
+
+  const client = new MongoClient(uri);
+
   try {
-    console.log('Attempting to connect to MongoDB...');
-    client = new MongoClient(process.env.MONGODB_URI);
+    // Connect to MongoDB
     await client.connect();
+    console.log('✅ Successfully connected to MongoDB');
+
+    // Check if database exists
+    const databases = await client.db().admin().listDatabases();
+    const dbExists = databases.databases.some(db => db.name === dbName);
     
-    // Get database
-    const dbName = process.env.MONGODB_DB_NAME || 'payroll_app';
-    const db = client.db(dbName);
-    
-    // Simple ping command to check connection
-    await db.command({ ping: 1 });
-    console.log('✅ Connection successful!');
-    
-    // List collections
-    const collections = await db.listCollections().toArray();
-    console.log(`\nDatabase: ${dbName}`);
-    console.log('Collections:');
-    if (collections.length === 0) {
-      console.log('  No collections found (empty database)');
+    if (dbExists) {
+      console.log(`✅ Database "${dbName}" exists`);
     } else {
-      collections.forEach(collection => {
-        console.log(`  - ${collection.name}`);
-      });
+      console.log(`⚠️ Database "${dbName}" does not exist`);
     }
 
-    console.log('\n✨ Your MongoDB connection is working properly!');
+    // Get server info
+    const serverInfo = await client.db().admin().serverStatus();
+    console.log('\n📊 Server Information:');
+    console.log(`- Version: ${serverInfo.version}`);
+    console.log(`- Host: ${serverInfo.host}`);
+    console.log(`- Process: ${serverInfo.process}`);
+
   } catch (error) {
-    console.error('❌ Failed to connect to MongoDB:');
-    console.error(error);
-    console.log('\nTroubleshooting tips:');
-    console.log('1. Check that your connection string is correct');
-    console.log('2. Ensure your network allows connections to MongoDB');
-    console.log('3. Verify your MongoDB user credentials');
-    console.log('4. Make sure your IP address is in the MongoDB Atlas access list (if using Atlas)');
+    console.error('❌ Connection failed:', error.message);
   } finally {
-    if (client) {
-      await client.close();
-      console.log('Connection closed.');
-    }
+    await client.close();
   }
 }
 
@@ -82,4 +76,4 @@ function maskConnectionString(uri) {
 }
 
 // Run the check
-checkConnection().catch(console.error); 
+checkMongoDBConnection().catch(console.error); 
