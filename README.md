@@ -102,7 +102,7 @@ yarn test
 ## 📁 Project Structure
 
 ```
-project-bolt/
+pay-roll/
 ├── app/              # Next.js app directory
 ├── components/       # Reusable UI components
 ├── lib/             # Utility functions and configurations
