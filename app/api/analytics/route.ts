@@ -1,60 +1,134 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { EmployeeService } from '@/lib/dual-database-service';
 import { getCollection } from '@/lib/mongodb';
+import { EmployeeService } from '@/lib/dual-database-service';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const event = searchParams.get('event');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const type = searchParams.get('type') || 'default';
+    const period = searchParams.get('period') || '30d';
     
-    // Build MongoDB query
-    const query: any = {};
+    let analytics = [];
     
-    if (event) {
-      query.event = event;
+    switch (type) {
+      case 'payroll':
+        // Get payroll analytics from MongoDB
+        const payrollCollection = await getCollection('payroll_transactions');
+        analytics = await payrollCollection.aggregate([
+          {
+            $match: {
+              created_at: { 
+                $gte: new Date(Date.now() - getPeriodInMs(period)) 
+              }
+            }
+          },
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+              totalAmount: { $sum: '$amount' },
+              count: { $sum: 1 }
+            }
+          },
+          { $sort: { _id: 1 } }
+        ]).toArray();
+        break;
+        
+      case 'employees':
+        // Get employee analytics from MongoDB
+        const employeeActivities = await getCollection('employee_activities');
+        analytics = await employeeActivities.aggregate([
+          {
+            $match: {
+              timestamp: { 
+                $gte: new Date(Date.now() - getPeriodInMs(period)) 
+              }
+            }
+          },
+          {
+            $group: {
+              _id: '$action',
+              count: { $sum: 1 }
+            }
+          }
+        ]).toArray();
+        break;
+        
+      case 'vault':
+        // Get vault analytics from MongoDB
+        const vaultCollection = await getCollection('vault_analytics');
+        analytics = await vaultCollection.aggregate([
+          {
+            $match: {
+              timestamp: { 
+                $gte: new Date(Date.now() - getPeriodInMs(period)) 
+              }
+            }
+          },
+          {
+            $group: {
+              _id: '$type',
+              totalAmount: { $sum: '$amount' },
+              count: { $sum: 1 }
+            }
+          }
+        ]).toArray();
+        break;
+        
+      default:
+        // Get general analytics from MongoDB
+        analytics = await EmployeeService.getAnalytics({
+          timestamp: { $gte: new Date(Date.now() - getPeriodInMs(period)) }
+        });
     }
     
-    if (startDate || endDate) {
-      query.timestamp = {};
-      
-      if (startDate) {
-        query.timestamp.$gte = new Date(startDate);
-      }
-      
-      if (endDate) {
-        query.timestamp.$lte = new Date(endDate);
-      }
-    }
-    
-    // Fetch analytics data from MongoDB
-    const analyticsData = await EmployeeService.getAnalytics(query);
-    
-    // Perform aggregation directly with MongoDB
-    const collection = await getCollection('analytics');
-    
-    // Example: Count events by department
-    const departmentStats = await collection.aggregate([
-      { $match: query },
-      { $group: {
-          _id: "$department",
-          count: { $sum: 1 },
-          totalSalary: { $sum: "$salary" }
-        }
-      },
-      { $sort: { count: -1 } }
-    ]).toArray();
-    
-    return NextResponse.json({
-      data: analyticsData,
-      departmentStats
-    });
-  } catch (error) {
-    console.error('Failed to fetch analytics:', error);
+    return NextResponse.json({ analytics });
+  } catch (error: any) {
+    console.error('Error fetching analytics:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch analytics' },
+      { error: 'Failed to fetch analytics', message: error.message },
       { status: 500 }
     );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    
+    if (!body.event) {
+      return NextResponse.json(
+        { error: 'Event name is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Store analytics event in MongoDB
+    await EmployeeService.storeAnalyticsData({
+      ...body,
+      ip: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown'
+    });
+    
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Error storing analytics event:', error);
+    return NextResponse.json(
+      { error: 'Failed to store analytics event', message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to convert period string to milliseconds
+function getPeriodInMs(period: string): number {
+  const value = parseInt(period);
+  const unit = period.slice(-1);
+  
+  switch (unit) {
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    case 'w': return value * 7 * 24 * 60 * 60 * 1000;
+    case 'm': return value * 30 * 24 * 60 * 60 * 1000;
+    case 'y': return value * 365 * 24 * 60 * 60 * 1000;
+    default: return 30 * 24 * 60 * 60 * 1000; // Default to 30 days
   }
 } 

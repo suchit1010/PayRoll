@@ -38,8 +38,6 @@
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.2",
     "@supabase/supabase-js": "^2.39.8",
-    "@types/node": "20.6.2",
-    "@types/react": "18.2.22",
     "@types/react-dom": "18.2.7",
     "autoprefixer": "10.4.15",
     "bufferutil": "^4.0.9",
@@ -74,6 +72,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "@types/node": "22.15.19",
+    "@types/react": "19.1.4",
     "vitest": "^3.1.2"
   }
 }
